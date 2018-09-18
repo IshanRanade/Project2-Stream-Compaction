@@ -3,6 +3,9 @@
 #include "common.h"
 #include "efficient.h"
 #include <device_launch_parameters.h>
+#include <iostream>
+#include <stdlib.h>
+#include <string>
 
 
 namespace StreamCompaction {
@@ -86,6 +89,29 @@ namespace StreamCompaction {
             cudaMemcpy(odata, temp, n * sizeof(int), cudaMemcpyDeviceToHost);
         }
 
+        __global__ void kernMapToBoolean(int n, int *read, int *write) {
+            int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+            if (index < n) {
+                if (read[index] == 0) {
+                    write[index] = 0;
+                }
+                else {
+                    write[index] = 1;
+                }
+            }
+        }
+
+        __global__ void kernScatter(int n, int *idata, int *booleans, int *scan, int *odata) {
+            int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+            if (index < n) {
+                if (booleans[index] == 1) {
+                    odata[scan[index]] = idata[index];
+                }
+            }
+        }
+
         /**
          * Performs stream compaction on idata, storing the result into odata.
          * All zeroes are discarded.
@@ -96,12 +122,53 @@ namespace StreamCompaction {
          * @returns      The number of elements remaining after compaction.
          */
         int compact(int n, int *odata, const int *idata) {
-            timer().startGpuTimer();
-            
-            // TODO
+            //timer().startGpuTimer();
 
-            timer().endGpuTimer();
-            return -1;
+            int blockSize = 256;
+            int blocks = (n + blockSize - 1) / blockSize;
+
+            int *dev_idata;
+            int *booleans;
+            int *scanArray;
+            int *result;
+
+            cudaMallocManaged(&dev_idata, n * sizeof(int));
+
+            cudaDeviceSynchronize();
+            
+            for (int i = 0; i < n; ++i) {
+                dev_idata[i] = idata[i];
+            }
+            
+            cudaMallocManaged(&booleans, n * sizeof(int));
+            cudaMallocManaged(&scanArray, n * sizeof(int));
+            cudaMallocManaged(&result, n * sizeof(int));
+
+            cudaDeviceSynchronize();
+
+            // First map the initial array to booleans
+            kernMapToBoolean << <blocks, blockSize >> > (n, dev_idata, booleans);
+
+            cudaDeviceSynchronize();
+
+            // Now do a scan
+            scan(n, scanArray, booleans);
+
+            // Now do a scatter
+            int *dev_odata;
+            cudaMallocManaged(&dev_odata, n * sizeof(int));
+            kernScatter << <blocks, blockSize >> > (n, dev_idata, booleans, scanArray, dev_odata);
+
+            cudaDeviceSynchronize();
+
+            int finalCount = 0;
+            for (int i = 0; i < n; ++i) {
+                finalCount += booleans[i];
+            }
+
+            cudaMemcpy(odata, dev_odata, finalCount * sizeof(int), cudaMemcpyDeviceToHost);
+
+            return finalCount;
         }
     }
 }
