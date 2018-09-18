@@ -18,8 +18,8 @@ namespace StreamCompaction {
             int index = threadIdx.x + (blockIdx.x * blockDim.x);
 
             if (index < n) {
-                for (int k = 0; k < n; k += 2 * power) {
-                    array[k + (2 * power) - 1] = array[k + power - 1] + array[k + (2 * power) - 1];
+                if (index % (2 * power) == 0) {
+                    array[index + (2 * power) - 1] = array[index + power - 1] + array[index + (2 * power) - 1];
                 }
             }
         }
@@ -28,10 +28,10 @@ namespace StreamCompaction {
             int index = threadIdx.x + (blockIdx.x * blockDim.x);
 
             if (index < n) {
-                for (int k = 0; k < n; k += 2 * power) {
-                    int t = array[k + power - 1];
-                    array[k + power - 1] = array[k + (2 * power) - 1];
-                    array[k + (2 * power) - 1] = t + array[k + (2 * power) - 1];
+                if (index % (2 * power) == 0) {
+                    int t = array[index + power - 1];
+                    array[index + power - 1] = array[index + (2 * power) - 1];
+                    array[index + (2 * power) - 1] = t + array[index + (2 * power) - 1];
                 }
             }
         }
@@ -51,26 +51,33 @@ namespace StreamCompaction {
          */
         void scan(int n, int *odata, const int *idata) {
             int *temp;
-            cudaMalloc((void**)&temp, n * sizeof(int));
-            cudaMemcpy(temp, idata, n * sizeof(int), cudaMemcpyHostToDevice);
 
+            int size = 1;
+            while (size < n) {
+                size *= 2;
+            }
+
+            cudaMalloc((void**)&temp, size * sizeof(int));
+            cudaDeviceSynchronize();
+
+            cudaMemcpy(temp, idata, n * sizeof(int), cudaMemcpyHostToDevice);
             cudaDeviceSynchronize();
 
             timer().startGpuTimer();
 
             int blockSize = 256;
-            int blocks = (n + blockSize - 1) / blockSize;
+            int blocks = (size + blockSize - 1) / blockSize;
 
             // TODO
-            for (int d = 0; d < ilog2ceil(n); ++d) {
-                kernUpsweep << <blocks, blockSize >> > (n, pow(2, d), temp);
+            for (int d = 0; d < ilog2ceil(size); ++d) {
+                kernUpsweep << <blocks, blockSize >> > (size, pow(2, d), temp);
                 cudaDeviceSynchronize();
             }
             
-            kernSetZero << <blocks, blockSize >> > (n, temp);
+            kernSetZero << <blocks, blockSize >> > (size, temp);
 
-            for (int d = ilog2ceil(n) - 1; d >= 0; --d) {
-                kernDownsweep << <blocks, blockSize >> > (n, pow(2, d), temp);
+            for (int d = ilog2ceil(size) - 1; d >= 0; --d) {
+                kernDownsweep << <blocks, blockSize >> > (size, pow(2, d), temp);
                 cudaDeviceSynchronize();
             }
 
