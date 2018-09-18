@@ -52,12 +52,12 @@ void onesArray(int n, int *a) {
 void genArray(int n, int *a, int maxval) {
     srand(time(nullptr));
 
-    if (n == 7) {
+    /*if (n == 7) {
         for (int i = 0; i < n; i++) {
             a[i] = i;
         }
         return;
-    }
+    }*/
 
     for (int i = 0; i < n; i++) {
         a[i] = rand() % maxval;
