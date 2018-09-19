@@ -87,6 +87,53 @@ namespace StreamCompaction {
             timer().endGpuTimer();
 
             cudaMemcpy(odata, temp, n * sizeof(int), cudaMemcpyDeviceToHost);
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+        void scanEfficient(int n, int *odata, const int *idata) {
+             int *temp;
+
+            int size = 1;
+            while (size < n) {
+                size *= 2;
+            }
+
+            cudaMalloc((void**)&temp, size * sizeof(int));
+            cudaDeviceSynchronize();
+
+            cudaMemcpy(temp, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+            cudaDeviceSynchronize();
+
+            int blockSize = 256;
+            int blocks = (size + blockSize - 1) / blockSize;
+
+            // TODO
+            for (int d = 0; d < ilog2ceil(size); ++d) {
+                kernUpsweep << <blocks, blockSize >> > (size, pow(2, d), temp);
+                cudaDeviceSynchronize();
+            }
+
+            kernSetZero << <blocks, blockSize >> > (size, temp);
+
+            for (int d = ilog2ceil(size) - 1; d >= 0; --d) {
+                kernDownsweep << <blocks, blockSize >> > (size, pow(2, d), temp);
+                cudaDeviceSynchronize();
+            }
+
+            cudaMemcpy(odata, temp, n * sizeof(int), cudaMemcpyDeviceToHost);
+
         }
 
         __global__ void kernMapToBoolean(int n, int *read, int *write) {
@@ -122,7 +169,7 @@ namespace StreamCompaction {
          * @returns      The number of elements remaining after compaction.
          */
         int compact(int n, int *odata, const int *idata) {
-            //timer().startGpuTimer();
+            timer().startGpuTimer();
 
             int blockSize = 256;
             int blocks = (n + blockSize - 1) / blockSize;
@@ -152,7 +199,7 @@ namespace StreamCompaction {
             cudaDeviceSynchronize();
 
             // Now do a scan
-            scan(n, scanArray, booleans);
+            scanEfficient(n, scanArray, booleans);
 
             // Now do a scatter
             int *dev_odata;
@@ -167,6 +214,8 @@ namespace StreamCompaction {
             }
 
             cudaMemcpy(odata, dev_odata, finalCount * sizeof(int), cudaMemcpyDeviceToHost);
+
+            timer().endGpuTimer();
 
             return finalCount;
         }
