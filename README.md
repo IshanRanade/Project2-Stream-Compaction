@@ -190,6 +190,6 @@ Press any key to continue . . .
 
 ## Discussion
 
-One of the biggest performance hits for my work efficient implementation I believe is the bakin conflicts that are occurring, which are drastically reducing its efficiency.  Another hit could be the mathematical operations that I am performing in my kernels, as I tended to repeat some calculations and did not save every value for future use.
+One of the biggest performance hits for my work efficient implementation I believe is the bank conflicts that are occurring, which are drastically reducing its efficiency.  Another hit could be the mathematical operations that I am performing in my kernels, as I tended to repeat some calculations and did not save every value for future use.
 
 It seems that the thrust implementation took an extremely long time to finish.  This could be because that thrust takes some time to warm up, and may have had a lot of cache misses the first time that I used it.  In general my CPU version seemed to perform the best out of all of these.  I believe this is because I did not properly use shared memory, avoid bank conflicts, and keep my kernels lightweight enough to fully utilize the power of the GPU.  This assignment was a big eye opener in how to write better GPU code and what to look for in optimizing kernels.
